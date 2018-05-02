@@ -21,7 +21,7 @@ libmm-vidc-def += -D_ANDROID_ICS_
 # 			Make the Shared library (libOmxVidcCommon)
 # ---------------------------------------------------------------------------------
 
-libmm-vidc-inc      := $(LOCAL_PATH)/inc
+libmm-vidc-inc      := $(TOP)/hardware/qcom/media-caf-msm8996/mm-video-v4l2/vidc/common/inc
 libmm-vidc-inc      += $(TOP)/hardware/qcom/media-caf-msm8996/mm-core/inc
 libmm-vidc-inc      += $(TARGET_OUT_HEADERS)/qcom/display
 libmm-vidc-inc      += $(TOP)/hardware/qcom/media-caf-msm8996/libc2dcolorconvert

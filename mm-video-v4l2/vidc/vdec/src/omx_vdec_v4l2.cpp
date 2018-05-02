@@ -1169,6 +1169,26 @@ OMX_ERRORTYPE omx_vdec::decide_dpb_buffer_mode(bool split_opb_dpb_with_same_colo
             if (dither_enable) {
                 //split DPB-OPB
                 //DPB -> TP10UBWC, OPB -> UBWC
+
+                if (capture_capability != V4L2_PIX_FMT_NV12_UBWC) {
+                    drv_ctx.output_format = VDEC_YUV_FORMAT_NV12_UBWC;
+                    capture_capability = V4L2_PIX_FMT_NV12_UBWC;
+
+                    memset(&fmt, 0x0, sizeof(struct v4l2_format));
+                    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+                    rc = ioctl(drv_ctx.video_driver_fd, VIDIOC_G_FMT, &fmt);
+                    if (rc) {
+                        DEBUG_PRINT_ERROR("%s: Failed get format on capture mplane", __func__);
+                        return OMX_ErrorUnsupportedSetting;
+                    }
+                    fmt.fmt.pix_mp.pixelformat = capture_capability;
+                    rc = ioctl(drv_ctx.video_driver_fd, VIDIOC_S_FMT, &fmt);
+                    if (rc) {
+                        DEBUG_PRINT_ERROR("%s: Failed set format on capture mplane", __func__);
+                        return OMX_ErrorUnsupportedSetting;
+                    }
+                }
+
                 eRet = set_dpb(true, V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC);
             } else {
                 //combined DPB-OPB
@@ -2380,7 +2400,11 @@ OMX_ERRORTYPE omx_vdec::component_init(OMX_STRING role)
         m_frame_parser.init_start_codes(codec_type_parse);
     } else if (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx311",\
                 OMX_MAX_STRINGNAME_SIZE)) {
+#ifdef _ANDROID_O_MR1_DIVX_CHANGES
+        strlcpy((char *)m_cRole, "video_decoder.divx311",OMX_MAX_STRINGNAME_SIZE);
+#else
         strlcpy((char *)m_cRole, "video_decoder.divx",OMX_MAX_STRINGNAME_SIZE);
+#endif
         DEBUG_PRINT_LOW ("DIVX 311 Decoder selected");
         drv_ctx.decoder_format = VDEC_CODECTYPE_DIVX_3;
         output_capability = V4L2_PIX_FMT_DIVX_311;
@@ -2390,7 +2414,11 @@ OMX_ERRORTYPE omx_vdec::component_init(OMX_STRING role)
 
     } else if (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx4",\
                 OMX_MAX_STRINGNAME_SIZE)) {
+#ifdef _ANDROID_O_MR1_DIVX_CHANGES
+        strlcpy((char *)m_cRole, "video_decoder.divx4",OMX_MAX_STRINGNAME_SIZE);
+#else
         strlcpy((char *)m_cRole, "video_decoder.divx",OMX_MAX_STRINGNAME_SIZE);
+#endif
         DEBUG_PRINT_ERROR ("DIVX 4 Decoder selected");
         drv_ctx.decoder_format = VDEC_CODECTYPE_DIVX_4;
         output_capability = V4L2_PIX_FMT_DIVX;
@@ -3595,8 +3623,8 @@ bool omx_vdec::post_event(unsigned long p1,
 }
 
 static int get_max_h264_level() {
-#ifdef MAX_H264_LEVEL_4
-    return OMX_VIDEO_AVCLevel4;
+#ifdef MAX_H264_LEVEL_42
+    return OMX_VIDEO_AVCLevel42;
 #elif MAX_H264_LEVEL_51
     return OMX_VIDEO_AVCLevel51;
 #elif MAX_H264_LEVEL_52
@@ -3622,8 +3650,12 @@ OMX_ERRORTYPE omx_vdec::get_supported_profile_level(OMX_VIDEO_PARAM_PROFILELEVEL
             } else if (profileLevelType->nProfileIndex == 2) {
                 profileLevelType->eProfile = OMX_VIDEO_AVCProfileHigh;
             } else if (profileLevelType->nProfileIndex == 3) {
-                profileLevelType->eProfile = QOMX_VIDEO_AVCProfileConstrainedBaseline;
+                profileLevelType->eProfile = OMX_VIDEO_AVCProfileConstrainedBaseline;
             } else if (profileLevelType->nProfileIndex == 4) {
+                profileLevelType->eProfile = QOMX_VIDEO_AVCProfileConstrainedBaseline;
+            } else if (profileLevelType->nProfileIndex == 5) {
+                profileLevelType->eProfile = OMX_VIDEO_AVCProfileConstrainedHigh;
+            } else if (profileLevelType->nProfileIndex == 6) {
                 profileLevelType->eProfile = QOMX_VIDEO_AVCProfileConstrainedHigh;
             } else {
                 DEBUG_PRINT_LOW("get_parameter: OMX_IndexParamVideoProfileLevelQuerySupported nProfileIndex ret NoMore %u",
@@ -4702,12 +4734,25 @@ OMX_ERRORTYPE  omx_vdec::set_parameter(OMX_IN OMX_HANDLETYPE     hComp,
                                           (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx311", OMX_MAX_STRINGNAME_SIZE)) ||
                                           (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx4", OMX_MAX_STRINGNAME_SIZE))
                                         ) {
+#ifdef _ANDROID_O_MR1_DIVX_CHANGES
+                                        if (!strncmp((const char*)comp_role->cRole, "video_decoder.divx4", OMX_MAX_STRINGNAME_SIZE)) {
+                                          strlcpy((char*)m_cRole, "video_decoder.divx4", OMX_MAX_STRINGNAME_SIZE);
+                                        } else if (!strncmp((const char*)comp_role->cRole, "video_decoder.divx311", OMX_MAX_STRINGNAME_SIZE)) {
+                                          strlcpy((char*)m_cRole, "video_decoder.divx311", OMX_MAX_STRINGNAME_SIZE);
+                                        } else if (!strncmp((const char*)comp_role->cRole, "video_decoder.divx", OMX_MAX_STRINGNAME_SIZE)) {
+                                          strlcpy((char*)m_cRole, "video_decoder.divx", OMX_MAX_STRINGNAME_SIZE);
+                                        } else {
+                                          DEBUG_PRINT_ERROR("Setparameter: unknown Index %s", comp_role->cRole);
+                                          eRet =OMX_ErrorUnsupportedSetting;
+                                        }
+#else
                                       if (!strncmp((const char*)comp_role->cRole, "video_decoder.divx", OMX_MAX_STRINGNAME_SIZE)) {
                                           strlcpy((char*)m_cRole, "video_decoder.divx", OMX_MAX_STRINGNAME_SIZE);
                                       } else {
                                           DEBUG_PRINT_ERROR("Setparameter: unknown Index %s", comp_role->cRole);
                                           eRet =OMX_ErrorUnsupportedSetting;
                                       }
+#endif
                                   } else if ( (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.vc1", OMX_MAX_STRINGNAME_SIZE)) ||
                                           (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.wmv", OMX_MAX_STRINGNAME_SIZE))
                                         ) {
@@ -6590,30 +6635,47 @@ OMX_ERRORTYPE omx_vdec::free_output_buffer(OMX_BUFFERHEADERTYPE *bufferHdr)
 #endif
                 if (drv_ctx.ptr_outputbuffer[index].pmem_fd > 0
                     && !ouput_egl_buffers && !m_use_output_pmem) {
-                    if (drv_ctx.op_buf_map_info[index].free_buffer) {
+                    if (drv_ctx.op_buf_map_info != NULL) {
+                        if (drv_ctx.op_buf_map_info[index].free_buffer) {
+                            if (!secure_mode) {
+                                DEBUG_PRINT_LOW("unmap the output buffer fd = %d",
+                                        drv_ctx.ptr_outputbuffer[0].pmem_fd);
+                                DEBUG_PRINT_LOW("unmap the ouput buffer size=%u  address = %p",
+                                        (unsigned int)drv_ctx.op_buf_map_info[index].map_size,
+                                        drv_ctx.op_buf_map_info[index].base_address);
+                                munmap (drv_ctx.op_buf_map_info[index].base_address,
+                                        drv_ctx.op_buf_map_info[index].map_size);
+                            }
+                            close (drv_ctx.ptr_outputbuffer[index].pmem_fd);
+                            drv_ctx.ptr_outputbuffer[index].pmem_fd = -1;
+#ifdef USE_ION
+                            free_ion_memory(&drv_ctx.op_buf_ion_info[index]);
+#endif
+                        } else {
+                            drv_ctx.op_buf_ion_info[index].ion_device_fd = -1;
+                            drv_ctx.op_buf_ion_info[index].ion_alloc_data.handle = 0;
+                            drv_ctx.op_buf_ion_info[index].fd_ion_data.fd = -1;
+                        }
+                        drv_ctx.op_buf_map_info[index].free_buffer = false;
+                        drv_ctx.op_buf_map_info[index].base_address = NULL;
+                        drv_ctx.op_buf_map_info[index].map_size = 0;
+                        drv_ctx.op_buf_map_info[index].offset = 0;
+                    } else {
                         if (!secure_mode) {
                             DEBUG_PRINT_LOW("unmap the output buffer fd = %d",
-                                    drv_ctx.ptr_outputbuffer[0].pmem_fd);
+                                    drv_ctx.ptr_outputbuffer[index].pmem_fd);
                             DEBUG_PRINT_LOW("unmap the ouput buffer size=%u  address = %p",
-                                    (unsigned int)drv_ctx.op_buf_map_info[index].map_size,
-                                    drv_ctx.op_buf_map_info[index].base_address);
-                            munmap (drv_ctx.op_buf_map_info[index].base_address,
-                                    drv_ctx.op_buf_map_info[index].map_size);
+                                    (unsigned int)drv_ctx.ptr_outputbuffer[index].mmaped_size * drv_ctx.op_buf.actualcount,
+                                    drv_ctx.ptr_outputbuffer[index].bufferaddr);
+                            munmap (drv_ctx.ptr_outputbuffer[index].bufferaddr,
+                                    drv_ctx.ptr_outputbuffer[index].mmaped_size * drv_ctx.op_buf.actualcount);
                         }
                         close (drv_ctx.ptr_outputbuffer[index].pmem_fd);
                         drv_ctx.ptr_outputbuffer[index].pmem_fd = -1;
 #ifdef USE_ION
                         free_ion_memory(&drv_ctx.op_buf_ion_info[index]);
 #endif
-                    } else {
-                        drv_ctx.op_buf_ion_info[index].ion_device_fd = -1;
-                        drv_ctx.op_buf_ion_info[index].ion_alloc_data.handle = 0;
-                        drv_ctx.op_buf_ion_info[index].fd_ion_data.fd = -1;
                     }
-                    drv_ctx.op_buf_map_info[index].free_buffer = false;
-                    drv_ctx.op_buf_map_info[index].base_address = NULL;
-                    drv_ctx.op_buf_map_info[index].map_size = 0;
-                    drv_ctx.op_buf_map_info[index].offset = 0;
                 }
 #ifdef _ANDROID_
             }
@@ -8396,7 +8458,15 @@ OMX_ERRORTYPE  omx_vdec::component_role_enum(OMX_IN OMX_HANDLETYPE hComp,
     else if ((!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx",OMX_MAX_STRINGNAME_SIZE)) ||
             (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx311",OMX_MAX_STRINGNAME_SIZE))) {
         if ((0 == index) && role) {
+#ifdef _ANDROID_O_MR1_DIVX_CHANGES
+            if (!strncmp(drv_ctx.kind, "OMX.qcom.video.decoder.divx311",OMX_MAX_STRINGNAME_SIZE)) {
+                strlcpy((char *)role, "video_decoder.divx311",OMX_MAX_STRINGNAME_SIZE);
+            } else {
+                strlcpy((char *)role, "video_decoder.divx",OMX_MAX_STRINGNAME_SIZE);
+            }
+#else
             strlcpy((char *)role, "video_decoder.divx",OMX_MAX_STRINGNAME_SIZE);
+#endif
             DEBUG_PRINT_LOW("component_role_enum: role %s",role);
         } else {
             DEBUG_PRINT_LOW("No more roles");
@@ -10581,6 +10651,13 @@ OMX_ERRORTYPE omx_vdec::update_portdef(OMX_PARAM_PORTDEFINITIONTYPE *portDefn)
         return OMX_ErrorBadParameter;
     }
     DEBUG_PRINT_LOW("omx_vdec::update_portdef");
+    if (drv_ctx.frame_rate.fps_denominator > 0)
+	    portDefn->format.video.xFramerate = (drv_ctx.frame_rate.fps_numerator /
+	               drv_ctx.frame_rate.fps_denominator) << 16; //Q16 format
+	else {
+	    DEBUG_PRINT_ERROR("Error: Divide by zero");
+	    return OMX_ErrorBadParameter;
+    }
     portDefn->nVersion.nVersion = OMX_SPEC_VERSION;
     portDefn->nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
     portDefn->eDomain    = OMX_PortDomainVideo;
@@ -10592,9 +10669,6 @@ OMX_ERRORTYPE omx_vdec::update_portdef(OMX_PARAM_PORTDEFINITIONTYPE *portDefn)
         portDefn->nBufferSize        = drv_ctx.ip_buf.buffer_size;
         portDefn->format.video.eColorFormat = OMX_COLOR_FormatUnused;
         portDefn->format.video.eCompressionFormat = eCompressionFormat;
-        //for input port, always report the fps value set by client,
-        //to distinguish whether client got valid fps from parser.
-        portDefn->format.video.xFramerate = m_fps_received;
         portDefn->bEnabled   = m_inp_bEnabled;
         portDefn->bPopulated = m_inp_bPopulated;
 
@@ -10634,13 +10708,6 @@ OMX_ERRORTYPE omx_vdec::update_portdef(OMX_PARAM_PORTDEFINITIONTYPE *portDefn)
         portDefn->nBufferCountActual = drv_ctx.op_buf.actualcount;
         portDefn->nBufferCountMin    = drv_ctx.op_buf.mincount;
         portDefn->format.video.eCompressionFormat = OMX_VIDEO_CodingUnused;
-        if (drv_ctx.frame_rate.fps_denominator > 0)
-            portDefn->format.video.xFramerate = (drv_ctx.frame_rate.fps_numerator /
-                drv_ctx.frame_rate.fps_denominator) << 16; //Q16 format
-        else {
-            DEBUG_PRINT_ERROR("Error: Divide by zero");
-            return OMX_ErrorBadParameter;
-        }
         portDefn->bEnabled   = m_out_bEnabled;
         portDefn->bPopulated = m_out_bPopulated;
         if (!client_buffers.get_color_format(portDefn->format.video.eColorFormat)) {
@@ -10738,9 +10805,11 @@ OMX_ERRORTYPE omx_vdec::allocate_output_headers()
         drv_ctx.ptr_respbuffer = (struct vdec_output_frameinfo  *)\
                      calloc (sizeof (struct vdec_output_frameinfo),
                              drv_ctx.op_buf.actualcount);
-        if (!drv_ctx.ptr_outputbuffer || !drv_ctx.ptr_respbuffer) {
-            DEBUG_PRINT_ERROR("Failed to alloc drv_ctx.ptr_outputbuffer or drv_ctx.ptr_respbuffer");
-            free(pPtr);
+        if (!pPtr || !drv_ctx.ptr_outputbuffer || !drv_ctx.ptr_respbuffer) {
+            DEBUG_PRINT_ERROR("allocate_output_headers: allocation failed");
+            free(pPtr); pPtr = NULL;
+            free(drv_ctx.ptr_outputbuffer); drv_ctx.ptr_outputbuffer = NULL;
+            free(drv_ctx.ptr_respbuffer); drv_ctx.ptr_respbuffer = NULL;
             return OMX_ErrorInsufficientResources;
         }
 
@@ -10749,7 +10818,9 @@ OMX_ERRORTYPE omx_vdec::allocate_output_headers()
                       calloc (sizeof(struct vdec_ion),drv_ctx.op_buf.actualcount);
         if (!drv_ctx.op_buf_ion_info) {
             DEBUG_PRINT_ERROR("Failed to alloc drv_ctx.op_buf_ion_info");
-            free(pPtr);
+            free(pPtr); pPtr = NULL;
+            free(drv_ctx.ptr_outputbuffer); drv_ctx.ptr_outputbuffer = NULL;
+            free(drv_ctx.ptr_respbuffer); drv_ctx.ptr_respbuffer = NULL;
             return OMX_ErrorInsufficientResources;
         }
 #endif
@@ -11634,6 +11705,9 @@ void omx_vdec::handle_extradata(OMX_BUFFERHEADERTYPE *p_buf_hdr)
                     break;
                 case MSM_VIDC_EXTRADATA_S3D_FRAME_PACKING:
                     struct msm_vidc_s3d_frame_packing_payload *s3d_frame_packing_payload;
+                    if (data->nDataSize < sizeof(struct msm_vidc_s3d_frame_packing_payload)) {
+                        break;
+                    }
                     s3d_frame_packing_payload = (struct msm_vidc_s3d_frame_packing_payload *)(void *)data->data;
                     switch (s3d_frame_packing_payload->fpa_type) {
                         case MSM_VIDC_FRAMEPACK_SIDE_BY_SIDE:
